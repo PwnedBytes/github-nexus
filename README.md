@@ -1,4 +1,4 @@
-# GitHub Nexus · Repo Manager Pro
+# GitHub Nexus · Repo Manager
 
 A sleek, browser-based GitHub repository management tool featuring drag-and-drop ZIP deployments, branch management, and dual-mode synchronization strategies.
 
