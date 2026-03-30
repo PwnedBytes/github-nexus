@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>GitHub Nexus · Repo Manager Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap');
+        
+        * {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        
+        body {
+            background: radial-gradient(circle at 10% 20%, rgba(15, 23, 42, 1) 0%, rgba(2, 6, 23, 1) 100%);
+            background-attachment: fixed;
+        }
+        
+        /* Animated grain texture */
+        .grain-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+            opacity: 0.03;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+            background-repeat: repeat;
+        }
+        
+        .glass-panel {
+            background: rgba(15, 25, 45, 0.55);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+        
+        .glass-panel-strong {
+            background: rgba(10, 20, 35, 0.75);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+        }
+        
+        .repo-card {
+            transition: all 0.25 cubic-bezier(0.2, 0, 0, 1);
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(71, 85, 105, 0.4);
+        }
+        
+        .repo-card:hover {
+            transform: translateY(-3px);
+            background: rgba(51, 65, 85, 0.6);
+            border-color: #3b82f6;
+            box-shadow: 0 20px 35px -12px rgba(0, 0, 0, 0.4);
+        }
+        
+        .repo-card.selected {
+            border-left: 4px solid #3b82f6;
+            background: linear-gradient(120deg, rgba(59,130,246,0.15), rgba(59,130,246,0.02));
+            border-color: #3b82f6;
+        }
+        
+        .drop-zone {
+            transition: all 0.2s ease;
+            background: rgba(59, 130, 246, 0.02);
+            border: 2px dashed rgba(59, 130, 246, 0.4);
+        }
+        
+        .drop-zone.drag-over {
+            background: rgba(59, 130, 246, 0.15);
+            border-color: #3b82f6;
+            transform: scale(1.01);
+            box-shadow: 0 0 0 4px rgba(59,130,246,0.2);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(105deg, #2563eb, #1d4ed8);
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(37,99,235,0.3);
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 20px -6px #3b82f6;
+            filter: brightness(1.05);
+        }
+        
+        .btn-success {
+            background: linear-gradient(105deg, #10b981, #059669);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(105deg, #ef4444, #dc2626);
+        }
+        
+        .progress-bar {
+            transition: width 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+        }
+        
+        /* Collapsible tree styles */
+        .tree-root {
+            list-style: none;
+            padding-left: 0;
+        }
+        .tree-node {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            position: relative;
+        }
+        .tree-node-content {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        .tree-node-content:hover {
+            background: rgba(59,130,246,0.2);
+        }
+        .tree-toggle {
+            width: 20px;
+            height: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #94a3b8;
+            transition: transform 0.2s;
+        }
+        .tree-toggle.rotated {
+            transform: rotate(90deg);
+        }
+        .tree-children {
+            margin-left: 24px;
+            padding-left: 8px;
+            border-left: 1px dashed rgba(71,85,105,0.5);
+            display: none;
+        }
+        .tree-children.open {
+            display: block;
+        }
+        .file-icon, .folder-icon {
+            width: 18px;
+            height: 18px;
+        }
+        
+        .modal {
+            animation: modalFadeIn 0.2s ease-out;
+        }
+        @keyframes modalFadeIn {
+            from { opacity: 0; backdrop-filter: blur(0); }
+            to { opacity: 1; backdrop-filter: blur(8px); }
+        }
+        
+        .toast {
+            animation: slideInRight 0.25s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+        }
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(40px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        .tab-active {
+            background: rgba(59,130,246,0.2);
+            border-bottom: 2px solid #3b82f6;
+            color: white;
+        }
+        
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: #3b82f6;
+            border-radius: 8px;
+        }
+        
+        .glow-text {
+            text-shadow: 0 0 12px rgba(59,130,246,0.5);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .branch-badge {
+            background: linear-gradient(135deg, #8b5cf620, #7c3aed20);
+            border: 1px solid #8b5cf640;
+        }
+        
+        .input-fancy {
+            transition: all 0.2s;
+        }
+        .input-fancy:focus {
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.3);
+        }
+        
+        /* Radio card styles */
+        .radio-card {
+            transition: all 0.2s;
+            border: 1px solid rgba(71, 85, 105, 0.5);
+        }
+        .radio-card:hover {
+            border-color: rgba(59, 130, 246, 0.5);
+            background: rgba(59, 130, 246, 0.05);
+        }
+        .radio-card.selected {
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+        .radio-card input[type="radio"] {
+            accent-color: #3b82f6;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-slate-200 antialiased">
+    <div class="grain-overlay"></div>
+    
+    <div id="app" class="container mx-auto px-4 py-6 md:py-8 max-w-6xl relative z-10">
+        <!-- Header with animated gradient -->
+        <header class="mb-8 fade-in text-center md:text-left">
+            <div class="flex flex-col md:flex-row items-center gap-5 mb-3">
+                <div class="p-3 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-2xl shadow-xl shadow-blue-900/20">
+                    <i data-lucide="github" class="w-9 h-9 text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-3xl md:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-blue-300 via-indigo-300 to-purple-300 bg-clip-text text-transparent">
+                        GitHub Nexus
+                    </h1>
+                    <p class="text-slate-400 mt-1 text-sm md:text-base">Elite repo manager · branches · drag & drop deploy</p>
+                </div>
+                <div class="md:ml-auto">
+                    <button id="resetAppBtn" class="text-slate-400 hover:text-white text-sm bg-slate-800/30 px-3 py-1.5 rounded-full flex items-center gap-1 transition">
+                        <i data-lucide="log-out" class="w-4 h-4"></i> Disconnect
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Step 1: Token Input -->
+        <section id="step1" class="glass-panel rounded-2xl p-6 mb-6 transition-all">
+            <div class="flex items-center gap-3 mb-5">
+                <div class="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                    <i data-lucide="key" class="w-5 h-5 text-blue-300"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-semibold">Authenticate with GitHub</h2>
+                    <p class="text-xs text-slate-400">Personal Access Token (repo & workflow scopes)</p>
+                </div>
+            </div>
+            <div class="space-y-4">
+                <div class="relative">
+                    <input type="password" id="tokenInput" placeholder="ghp_xxxxxxxxxxxxxx" class="w-full bg-slate-900/60 border border-slate-600 rounded-xl px-4 py-3 pr-12 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 transition-all input-fancy">
+                    <button onclick="toggleTokenVisibility()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white">
+                        <i data-lucide="eye" class="w-5 h-5" id="eyeIcon"></i>
+                    </button>
+                </div>
+                <button onclick="fetchRepos()" id="fetchBtn" class="btn-primary w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all">
+                    <i data-lucide="plug-zap" class="w-5 h-5"></i>
+                    <span>Connect & Load Repositories</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- User Bar -->
+        <div id="userBar" class="hidden mb-6 glass-panel rounded-xl p-4 flex items-center justify-between flex-wrap gap-3">
+            <div class="flex items-center gap-4">
+                <img id="userAvatar" src="" alt="avatar" class="w-11 h-11 rounded-full border-2 border-blue-500 shadow-md">
+                <div>
+                    <p class="font-bold text-white text-lg" id="userName"></p>
+                    <p class="text-sm text-slate-400" id="userLogin"></p>
+                </div>
+            </div>
+            <button onclick="openCreateRepoModal()" class="btn-success px-5 py-2 rounded-xl font-medium flex items-center gap-2 transition-all">
+                <i data-lucide="plus" class="w-5 h-5"></i>
+                <span>New Repo</span>
+            </button>
+        </div>
+
+        <!-- Step 2: Repo Selection -->
+        <section id="step2" class="glass-panel rounded-2xl p-6 mb-6 hidden">
+            <div class="flex flex-wrap justify-between items-center mb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center"><i data-lucide="folder-git" class="w-5 h-5 text-purple-300"></i></div>
+                    <h2 class="text-xl font-semibold">Repository Hub</h2>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="refreshRepos()" class="p-2 rounded-lg bg-slate-800/40 hover:bg-slate-700/60"><i data-lucide="refresh-cw" class="w-5 h-5"></i></button>
+                    <span id="repoCountBadge" class="bg-slate-800/50 px-3 py-1 rounded-full text-xs">0 repos</span>
+                </div>
+            </div>
+
+            <div class="flex gap-2 border-b border-slate-700/60 mb-5">
+                <button onclick="switchTab('existing')" id="tabExisting" class="tab-active px-5 py-2 text-sm font-medium rounded-t-lg transition">Existing Repos</button>
+                <button onclick="switchTab('new')" id="tabNew" class="px-5 py-2 text-sm font-medium text-slate-400 hover:text-white transition">Create New</button>
+            </div>
+
+            <div id="existingReposView">
+                <div class="flex flex-col sm:flex-row gap-3 mb-4">
+                    <div class="relative flex-1"><i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"></i><input type="text" id="repoSearch" placeholder="Search repos..." class="w-full bg-slate-800/40 border border-slate-600 rounded-xl pl-9 pr-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" oninput="filterRepos()"></div>
+                    <select id="visibilityFilter" onchange="filterRepos()" class="bg-slate-800/40 border border-slate-600 rounded-xl px-3 py-2 text-sm"><option value="all">All</option><option value="public">Public</option><option value="private">Private</option></select>
+                </div>
+                <div id="repoList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[420px] overflow-y-auto custom-scroll p-1"></div>
+            </div>
+
+            <div id="newRepoView" class="hidden">
+                <div class="new-repo-card rounded-xl p-6 text-center cursor-pointer border-2 border-dashed border-emerald-500/40 bg-emerald-500/5 hover:bg-emerald-500/10 transition" onclick="openCreateRepoModal()">
+                    <i data-lucide="plus-circle" class="w-12 h-12 text-emerald-400 mx-auto mb-3"></i>
+                    <h3 class="text-lg font-semibold text-emerald-400">Start fresh</h3>
+                    <p class="text-sm text-slate-400">Create a new repository for your deployment</p>
+                </div>
+            </div>
+
+            <div id="selectedRepoInfo" class="hidden mt-6 p-4 bg-blue-500/5 border border-blue-500/30 rounded-xl">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex items-center gap-3"><i data-lucide="check-circle" class="w-5 h-5 text-blue-400"></i><div><p class="text-xs text-blue-300">Selected</p><p id="selectedRepoName" class="font-bold text-white"></p></div></div>
+                    <div class="flex items-center gap-2"><span class="text-sm text-slate-400">Branch:</span><select id="branchSelect" onchange="onBranchChange()" class="branch-badge rounded-lg px-3 py-1.5 text-sm font-mono bg-slate-800/50"></select><button onclick="openCreateBranchModal()" class="p-1.5 rounded-lg bg-slate-800/40 hover:bg-slate-700/60"><i data-lucide="git-branch-plus" class="w-4 h-4"></i></button></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Step 3: Upload & Deploy -->
+        <section id="step3" class="glass-panel rounded-2xl p-6 mb-6 hidden">
+            <div class="flex items-center gap-3 mb-5"><div class="w-10 h-10 rounded-xl bg-green-500/20"><i data-lucide="rocket" class="w-5 h-5 m-2.5 text-green-300"></i></div><div><h2 class="text-xl font-semibold">Deploy Center</h2><p class="text-sm text-slate-400">Upload ZIP, preview structure, push to branch</p></div></div>
+            
+            <div id="deployTarget" class="mb-5 p-3 bg-slate-800/30 rounded-xl text-sm flex flex-wrap gap-2 items-center"><i data-lucide="target" class="w-4 h-4"></i><span class="text-slate-400">Target:</span><span id="targetRepo" class="font-mono text-white"></span><span>→</span><span id="targetBranch" class="branch-badge px-2 py-0.5 rounded text-xs"></span></div>
+            
+            <!-- Deployment Mode Selector -->
+            <div class="mb-6 space-y-3">
+                <h3 class="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                    <i data-lucide="settings-2" class="w-4 h-4"></i>
+                    Deployment Strategy
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Full Sync Option -->
+                    <label class="radio-card rounded-xl p-4 cursor-pointer block selected" id="modeFullSyncLabel">
+                        <div class="flex items-start gap-3">
+                            <input type="radio" name="deployMode" value="fullSync" checked class="mt-1" onchange="updateDeployMode('fullSync')">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <i data-lucide="refresh-cw" class="w-4 h-4 text-rose-400"></i>
+                                    <span class="font-semibold text-white">Full Sync (Mirror)</span>
+                                </div>
+                                <p class="text-xs text-slate-400 leading-relaxed">
+                                    Replaces entire repository content with ZIP contents. 
+                                    <span class="text-rose-300 block mt-1">
+                                        ⚠️ Deletes files/folders not present in the ZIP. Updates existing files.
+                                    </span>
+                                </p>
+                            </div>
+                        </div>
+                    </label>
+                    
+                    <!-- Partial Update Option -->
+                    <label class="radio-card rounded-xl p-4 cursor-pointer block" id="modePartialLabel">
+                        <div class="flex items-start gap-3">
+                            <input type="radio" name="deployMode" value="partial" class="mt-1" onchange="updateDeployMode('partial')">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <i data-lucide="layers" class="w-4 h-4 text-emerald-400"></i>
+                                    <span class="font-semibold text-white">Partial Update (Merge)</span>
+                                </div>
+                                <p class="text-xs text-slate-400 leading-relaxed">
+                                    Adds new files and updates existing ones from ZIP. 
+                                    <span class="text-emerald-300 block mt-1">
+                                        ✓ Keeps existing files not in the ZIP. Safe for updates.
+                                    </span>
+                                </p>
+                            </div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+            
+            <div id="dropZone" class="drop-zone rounded-2xl p-8 text-center cursor-pointer transition-all mb-6" onclick="document.getElementById('fileInput').click()" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
+                <input type="file" id="fileInput" accept=".zip" class="hidden" onchange="handleFileSelect(event)">
+                <div id="dropContent"><i data-lucide="upload-cloud" class="w-12 h-12 mx-auto text-slate-400 mb-2"></i><p class="font-medium">Drop ZIP archive or click</p><p class="text-xs text-slate-500 mt-1">Max 100MB</p></div>
+                <div id="fileSelected" class="hidden"><i data-lucide="file-archive" class="w-10 h-10 text-emerald-400 mx-auto mb-2"></i><p id="selectedFileName" class="font-semibold text-emerald-300"></p><p id="fileSize" class="text-xs"></p><button onclick="clearFile(event)" class="text-red-400 text-xs mt-1 hover:underline">Remove</button></div>
+            </div>
+            <div id="fileTreeSection" class="hidden mb-5"><div class="flex justify-between items-center mb-2"><h3 class="text-sm font-semibold flex gap-2"><i data-lucide="folder-tree"></i> Archive structure</h3><span id="fileCountBadge" class="text-xs bg-slate-700/50 px-2 py-0.5 rounded-full"></span></div><div id="fileTree" class="bg-black/30 rounded-xl p-3 max-h-72 overflow-y-auto custom-scroll text-xs font-mono border border-slate-700/50"></div></div>
+            <button onclick="deployFiles()" id="deployBtn" class="btn-primary w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 disabled:opacity-50" disabled><i data-lucide="send"></i> Deploy to GitHub</button>
+        </section>
+
+        <!-- Progress Section -->
+        <section id="progressSection" class="glass-panel rounded-2xl p-6 hidden">
+            <div class="flex justify-between items-center mb-3"><h3 class="font-semibold flex gap-2"><i data-lucide="loader" class="animate-spin"></i> Deployment log</h3><span id="progressPercent" class="text-2xl font-bold text-blue-300">0%</span></div>
+            <div class="mb-3"><div class="w-full bg-slate-700 rounded-full h-2"><div id="progressBar" class="progress-bar h-2 rounded-full bg-gradient-to-r from-blue-400 to-indigo-500" style="width:0%"></div></div><div class="flex justify-between text-xs mt-1"><span id="progressLabel"></span><span id="progressStats"></span></div></div>
+            <div id="progressLog" class="bg-black/40 rounded-xl p-3 max-h-52 overflow-y-auto custom-scroll text-xs font-mono space-y-1"></div>
+        </section>
+    </div>
+
+    <!-- Modals (Create Repo / Branch) -->
+    <div id="createRepoModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 hidden items-center justify-center p-4 modal"><div class="glass-panel-strong rounded-2xl p-6 w-full max-w-md border border-white/10"><div class="flex justify-between mb-4"><h3 class="text-xl font-bold flex gap-2"><i data-lucide="plus-circle"></i> New Repository</h3><button onclick="closeCreateRepoModal()"><i data-lucide="x"></i></button></div><div class="space-y-4"><input type="text" id="newRepoName" placeholder="repo-name" class="w-full bg-slate-800/70 rounded-xl p-3 border border-slate-600 focus:border-emerald-500"><input type="text" id="newRepoDescription" placeholder="Description (optional)" class="w-full bg-slate-800/70 rounded-xl p-3 border border-slate-600"><div class="flex gap-3"><label class="flex-1 text-center border rounded-xl p-2 cursor-pointer peer-checked:border-emerald-500"><input type="radio" name="repoVisibility" value="public" checked hidden><span>🌍 Public</span></label><label class="flex-1 text-center border rounded-xl p-2 cursor-pointer"><input type="radio" name="repoVisibility" value="private" hidden><span>🔒 Private</span></label></div><div class="flex gap-3"><label class="flex items-center gap-2"><input type="checkbox" id="initReadme"> <span>README.md</span></label><label class="flex items-center gap-2"><input type="checkbox" id="initGitignore"> <span>.gitignore</span></label></div></div><div class="flex gap-3 mt-6"><button onclick="closeCreateRepoModal()" class="flex-1 border border-slate-600 rounded-xl py-2">Cancel</button><button onclick="createRepository()" id="createRepoBtn" class="btn-success flex-1 rounded-xl py-2 font-semibold">Create</button></div></div></div>
+    <div id="createBranchModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 hidden items-center justify-center p-4 modal"><div class="glass-panel-strong rounded-2xl p-6 w-full max-w-md"><div class="flex justify-between"><h3 class="text-xl font-bold flex gap-2"><i data-lucide="git-branch-plus"></i> New branch</h3><button onclick="closeCreateBranchModal()"><i data-lucide="x"></i></button></div><div class="mt-4 space-y-4"><input type="text" id="newBranchName" placeholder="feature/amazing" class="w-full bg-slate-800/70 rounded-xl p-3 border"><select id="baseBranchSelect" class="w-full bg-slate-800/70 rounded-xl p-3 border"></select></div><div class="flex gap-3 mt-6"><button onclick="closeCreateBranchModal()" class="flex-1 border border-slate-600 py-2 rounded-xl">Cancel</button><button onclick="createBranch()" id="createBranchBtn" class="bg-purple-600 flex-1 rounded-xl py-2 font-semibold">Create branch</button></div></div></div>
+
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        // --- STATE ---
+        let githubToken = '', currentUser = null, repositories = [], selectedRepo = null, selectedBranch = null, branches = [], zipContents = null, currentTab = 'existing', deployMode = 'fullSync';
+
+        // Helpers
+        const showToast = (msg, type = 'info') => {
+            const toast = document.createElement('div');
+            const colors = { info: 'border-blue-500/40 bg-blue-500/10 text-blue-200', success: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200', error: 'border-red-500/40 bg-red-500/10 text-red-200', warning: 'border-yellow-500/40 bg-yellow-500/10 text-yellow-200' };
+            toast.className = `toast px-4 py-3 rounded-xl border backdrop-blur-sm flex items-center gap-3 ${colors[type]}`;
+            toast.innerHTML = `<i data-lucide="${type === 'success' ? 'check-circle-2' : type === 'error' ? 'alert-circle' : type === 'warning' ? 'alert-triangle' : 'info'}" class="w-5 h-5"></i><span class="text-sm">${msg}</span>`;
+            document.getElementById('toastContainer').appendChild(toast);
+            lucide.createIcons();
+            setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateX(30px)'; setTimeout(() => toast.remove(), 300); }, 4200);
+        };
+        const logProgress = (msg, type = 'info') => { const logDiv = document.getElementById('progressLog'); const entry = document.createElement('div'); entry.className = `text-xs ${type === 'success' ? 'text-emerald-300' : type === 'error' ? 'text-red-300' : type === 'warning' ? 'text-yellow-300' : 'text-slate-300'}`; entry.innerHTML = `<span class="text-slate-500">[${new Date().toLocaleTimeString()}]</span> ${msg}`; logDiv.appendChild(entry); entry.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); };
+        const updateProgress = (percent, label, stats = '') => { document.getElementById('progressBar').style.width = `${percent}%`; document.getElementById('progressPercent').innerText = `${percent}%`; if(label) document.getElementById('progressLabel').innerText = label; if(stats) document.getElementById('progressStats').innerText = stats; };
+        
+        function toggleTokenVisibility() { const inp = document.getElementById('tokenInput'); const icon = document.getElementById('eyeIcon'); inp.type = inp.type === 'password' ? 'text' : 'password'; icon.setAttribute('data-lucide', inp.type === 'password' ? 'eye' : 'eye-off'); lucide.createIcons(); }
+        
+        function updateDeployMode(mode) {
+            deployMode = mode;
+            document.getElementById('modeFullSyncLabel').classList.toggle('selected', mode === 'fullSync');
+            document.getElementById('modePartialLabel').classList.toggle('selected', mode === 'partial');
+        }
+        
+        async function fetchRepos() {
+            const token = document.getElementById('tokenInput').value.trim();
+            if(!token) return showToast('Enter GitHub token', 'error');
+            githubToken = token;
+            const btn = document.getElementById('fetchBtn'); btn.disabled = true; btn.innerHTML = '<i data-lucide="loader" class="animate-spin w-5 h-5"></i> Connecting...'; lucide.createIcons();
+            try {
+                const userRes = await fetch('https://api.github.com/user', { headers: { 'Authorization': `token ${githubToken}` } });
+                if(!userRes.ok) throw new Error('Invalid token');
+                currentUser = await userRes.json();
+                document.getElementById('userAvatar').src = currentUser.avatar_url;
+                document.getElementById('userName').innerText = currentUser.name || currentUser.login;
+                document.getElementById('userLogin').innerText = `@${currentUser.login}`;
+                document.getElementById('userBar').classList.remove('hidden');
+                await loadRepositories();
+                document.getElementById('step2').classList.remove('hidden');
+                showToast(`Hello ${currentUser.login}`, 'success');
+            } catch(e) { showToast(e.message, 'error'); } finally { btn.disabled = false; btn.innerHTML = '<i data-lucide="plug-zap"></i> Connect & Load Repositories'; lucide.createIcons(); }
+        }
+        
+        async function loadRepositories() {
+            let page = 1, allRepos = [];
+            while(page <= 5) {
+                const res = await fetch(`https://api.github.com/user/repos?per_page=100&page=${page}&sort=updated`, { headers: { 'Authorization': `token ${githubToken}` } });
+                if(!res.ok) break;
+                const data = await res.json();
+                if(data.length === 0) break;
+                allRepos.push(...data); page++;
+            }
+            repositories = allRepos;
+            displayRepos(repositories);
+        }
+        
+        function displayRepos(repos) { const container = document.getElementById('repoList'); document.getElementById('repoCountBadge').innerText = `${repos.length} repos`; if(!repos.length) { container.innerHTML = `<div class="col-span-full text-center py-12 text-slate-500"><i data-lucide="inbox" class="w-12 h-12 mx-auto"></i><p>No repos</p></div>`; lucide.createIcons(); return; }
+            container.innerHTML = repos.map(repo => `<div class="repo-card rounded-xl p-4 cursor-pointer" data-fullname="${repo.full_name}" data-default="${repo.default_branch}"><div class="flex justify-between"><h3 class="font-bold truncate">${repo.name}</h3><span class="text-xs px-2 py-0.5 rounded-full ${repo.private ? 'bg-red-500/20' : 'bg-emerald-500/20'}">${repo.private ? 'Private' : 'Public'}</span></div><p class="text-xs text-slate-400 mt-1 line-clamp-2 h-10">${repo.description || 'no description'}</p><div class="flex gap-3 mt-2 text-xs"><span class="branch-badge px-2 py-0.5 rounded-full"><i data-lucide="git-branch" class="w-3 h-3 inline"></i> ${repo.default_branch}</span><span><i data-lucide="star" class="w-3 h-3 inline"></i> ${repo.stargazers_count}</span></div></div>`).join('');
+            document.querySelectorAll('.repo-card').forEach(card => card.addEventListener('click', () => selectRepo(card.dataset.fullname, card.dataset.default, card)));
+            lucide.createIcons();
+        }
+        
+        function filterRepos() { const search = document.getElementById('repoSearch').value.toLowerCase(); const vis = document.getElementById('visibilityFilter').value; const filtered = repositories.filter(r => r.name.toLowerCase().includes(search) && (vis === 'all' || (vis === 'public' && !r.private) || (vis === 'private' && r.private))); displayRepos(filtered); }
+        function refreshRepos() { loadRepositories(); showToast('Refreshing repos...', 'info'); }
+        
+        function switchTab(tab) { currentTab = tab; document.getElementById('tabExisting').className = tab === 'existing' ? 'tab-active px-5 py-2 text-sm font-medium' : 'px-5 py-2 text-sm font-medium text-slate-400'; document.getElementById('tabNew').className = tab === 'new' ? 'tab-active px-5 py-2 text-sm font-medium' : 'px-5 py-2 text-sm font-medium text-slate-400'; document.getElementById('existingReposView').classList.toggle('hidden', tab !== 'existing'); document.getElementById('newRepoView').classList.toggle('hidden', tab !== 'new'); if(tab === 'new') openCreateRepoModal(); }
+        
+        async function selectRepo(fullName, defaultBranch, element) { document.querySelectorAll('.repo-card').forEach(c => c.classList.remove('selected')); element.classList.add('selected'); selectedRepo = fullName; selectedBranch = defaultBranch; document.getElementById('selectedRepoInfo').classList.remove('hidden'); document.getElementById('selectedRepoName').innerText = fullName; document.getElementById('step3').classList.remove('hidden'); document.getElementById('deployTarget').classList.remove('hidden'); document.getElementById('targetRepo').innerText = fullName; document.getElementById('targetBranch').innerText = defaultBranch; await loadBranches(fullName); if(zipContents) document.getElementById('deployBtn').disabled = false; }
+        
+        async function loadBranches(repoFullName) { const [owner, repo] = repoFullName.split('/'); const select = document.getElementById('branchSelect'); const baseSelect = document.getElementById('baseBranchSelect'); try { const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/branches?per_page=100`, { headers: { 'Authorization': `token ${githubToken}` } }); if(!res.ok) throw new Error(); const data = await res.json(); branches = data; select.innerHTML = data.map(b => `<option value="${b.name}" ${b.name === selectedBranch ? 'selected' : ''}>${b.name}</option>`).join(''); baseSelect.innerHTML = data.map(b => `<option value="${b.name}">${b.name}</option>`).join(''); } catch(e) { select.innerHTML = '<option>⚠️ failed</option>'; showToast('Could not fetch branches', 'error'); } }
+        function onBranchChange() { selectedBranch = document.getElementById('branchSelect').value; document.getElementById('targetBranch').innerText = selectedBranch; }
+        
+        function openCreateRepoModal() { document.getElementById('createRepoModal').classList.remove('hidden'); document.getElementById('createRepoModal').style.display = 'flex'; }
+        function closeCreateRepoModal() { document.getElementById('createRepoModal').style.display = 'none'; document.getElementById('newRepoName').value = ''; if(currentTab === 'new') switchTab('existing'); }
+        async function createRepository() { const name = document.getElementById('newRepoName').value.trim(); if(!name) return showToast('Name required', 'error'); const desc = document.getElementById('newRepoDescription').value; const priv = document.querySelector('input[name="repoVisibility"]:checked').value === 'private'; const initReadme = document.getElementById('initReadme').checked; const btn = document.getElementById('createRepoBtn'); btn.disabled = true; btn.innerText = 'Creating...'; try { const res = await fetch('https://api.github.com/user/repos', { method: 'POST', headers: { 'Authorization': `token ${githubToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name, description: desc, private: priv, auto_init: initReadme }) }); if(!res.ok) throw new Error(); const newRepo = await res.json(); showToast(`Created ${newRepo.name}`, 'success'); await loadRepositories(); closeCreateRepoModal(); setTimeout(() => { const cards = document.querySelectorAll('.repo-card'); for(let card of cards) if(card.querySelector('h3')?.innerText === name) { card.click(); break; } }, 600); } catch(e) { showToast('Creation failed', 'error'); } finally { btn.disabled = false; btn.innerText = 'Create'; } }
+        
+        function openCreateBranchModal() { if(!selectedRepo) return showToast('Select a repo first', 'warning'); document.getElementById('createBranchModal').style.display = 'flex'; document.getElementById('newBranchName').value = ''; }
+        function closeCreateBranchModal() { document.getElementById('createBranchModal').style.display = 'none'; }
+        async function createBranch() { const branchName = document.getElementById('newBranchName').value.trim(); const baseBranch = document.getElementById('baseBranchSelect').value; if(!branchName) return showToast('Branch name required', 'error'); const btn = document.getElementById('createBranchBtn'); btn.disabled = true; btn.innerText = 'Creating...'; try { const [owner, repo] = selectedRepo.split('/'); const baseRef = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${baseBranch}`, { headers: { 'Authorization': `token ${githubToken}` } }); if(!baseRef.ok) throw new Error(); const sha = (await baseRef.json()).object.sha; const create = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs`, { method: 'POST', headers: { 'Authorization': `token ${githubToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha }) }); if(!create.ok) throw new Error(); showToast(`Branch ${branchName} created`, 'success'); await loadBranches(selectedRepo); document.getElementById('branchSelect').value = branchName; selectedBranch = branchName; document.getElementById('targetBranch').innerText = branchName; closeCreateBranchModal(); } catch(e) { showToast('Branch creation failed', 'error'); } finally { btn.disabled = false; btn.innerText = 'Create branch'; } }
+        
+        // Drag & Drop + ZIP processing with collapsible tree
+        function handleDragOver(e) { e.preventDefault(); document.getElementById('dropZone').classList.add('drag-over'); }
+        function handleDragLeave(e) { document.getElementById('dropZone').classList.remove('drag-over'); }
+        function handleDrop(e) { e.preventDefault(); document.getElementById('dropZone').classList.remove('drag-over'); const file = e.dataTransfer.files[0]; if(file && file.name.endsWith('.zip')) processZipFile(file); else showToast('ZIP file required', 'error'); }
+        function handleFileSelect(e) { if(e.target.files[0]) processZipFile(e.target.files[0]); }
+        function clearFile(e) { e.stopPropagation(); zipContents = null; document.getElementById('dropContent').classList.remove('hidden'); document.getElementById('fileSelected').classList.add('hidden'); document.getElementById('fileTreeSection').classList.add('hidden'); document.getElementById('fileInput').value = ''; document.getElementById('deployBtn').disabled = !(selectedRepo && selectedBranch && zipContents); }
+        
+        function buildTreeStructure(files) {
+            const root = { name: '', children: {}, isDir: true };
+            files.forEach(path => {
+                const parts = path.split('/');
+                let current = root;
+                parts.forEach((part, idx) => {
+                    const isLast = idx === parts.length - 1;
+                    if(!current.children[part]) current.children[part] = { name: part, children: {}, isDir: !isLast };
+                    current = current.children[part];
+                });
+            });
+            return root;
+        }
+        function renderTree(node, level = 0) { if(node.name === '') return Object.values(node.children).map(child => renderTree(child, 0)).join('');
+            const hasChildren = Object.keys(node.children).length > 0;
+            if(!hasChildren) return `<li class="tree-node"><div class="tree-node-content"><span class="file-icon">📄</span><span class="text-slate-300">${escapeHtml(node.name)}</span></div></li>`;
+            const nodeId = `node_${Math.random().toString(36).substr(2, 8)}`;
+            return `<li class="tree-node"><div class="tree-node-content" data-node-id="${nodeId}"><span class="tree-toggle">▶</span><span class="folder-icon">📁</span><span class="font-medium text-cyan-300">${escapeHtml(node.name)}</span></div><ul class="tree-children" id="${nodeId}">${Object.values(node.children).map(c => renderTree(c, level+1)).join('')}</ul></li>`;
+        }
+        function escapeHtml(str) { return str.replace(/[&<>]/g, function(m) { if(m === '&') return '&amp;'; if(m === '<') return '&lt;'; if(m === '>') return '&gt;'; return m; }); }
+        function attachTreeEvents() { document.querySelectorAll('.tree-node-content').forEach(el => { el.removeEventListener('click', toggleTree); el.addEventListener('click', toggleTree); }); }
+        function toggleTree(e) { const target = e.currentTarget; const toggleSpan = target.querySelector('.tree-toggle'); const childrenUl = target.parentElement.querySelector('.tree-children'); if(childrenUl) { childrenUl.classList.toggle('open'); if(toggleSpan) toggleSpan.classList.toggle('rotated'); } e.stopPropagation(); }
+        
+        async function processZipFile(file) { if(file.size > 100*1024*1024) return showToast('Max 100MB', 'error');
+            document.getElementById('dropContent').classList.add('hidden'); document.getElementById('fileSelected').classList.remove('hidden'); document.getElementById('selectedFileName').innerText = file.name; document.getElementById('fileSize').innerText = (file.size/1024/1024).toFixed(2)+' MB';
+            try { const zip = await JSZip.loadAsync(file); zipContents = zip; const allPaths = Object.keys(zip.files).filter(p => !zip.files[p].dir); document.getElementById('fileCountBadge').innerText = `${allPaths.length} items`; const treeRoot = buildTreeStructure(allPaths); const html = `<ul class="tree-root">${Object.values(treeRoot.children).map(c => renderTree(c)).join('')}</ul>`; document.getElementById('fileTree').innerHTML = html; document.getElementById('fileTreeSection').classList.remove('hidden'); attachTreeEvents(); if(selectedRepo && selectedBranch) document.getElementById('deployBtn').disabled = false; showToast('ZIP ready', 'success'); } catch(e) { showToast('Invalid ZIP', 'error'); clearFile({ stopPropagation:()=>{} }); } }
+        
+        // Get all files from repository tree
+        async function getRepoFiles(owner, repo, branch) {
+            const files = [];
+            try {
+                // Get the current tree recursively
+                const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`, {
+                    headers: { 'Authorization': `token ${githubToken}` }
+                });
+                if (!res.ok) throw new Error('Failed to fetch tree');
+                const data = await res.json();
+                // Filter only blobs (files), not trees (directories)
+                return data.tree.filter(item => item.type === 'blob').map(item => item.path);
+            } catch (e) {
+                console.error('Error fetching repo tree:', e);
+                return [];
+            }
+        }
+        
+        async function deployFiles() { 
+            if(!selectedRepo || !selectedBranch || !zipContents) return showToast('Missing repo/branch/zip', 'error'); 
+            const [owner, repo] = selectedRepo.split('/'); 
+            const files = Object.keys(zipContents.files).filter(p => !zipContents.files[p].dir);
+            
+            document.getElementById('progressSection').classList.remove('hidden'); 
+            document.getElementById('deployBtn').disabled = true; 
+            updateProgress(0, 'Starting deployment', `0/${files.length}`); 
+            logProgress(`🚀 Deploying to ${selectedRepo}:${selectedBranch} [${deployMode === 'fullSync' ? 'FULL SYNC' : 'PARTIAL UPDATE'}]`, 'info'); 
+            
+            let uploaded = 0, failed = 0, deleted = 0;
+            const totalFiles = files.length;
+            
+            // If full sync, we need to check for deletions
+            let repoFiles = [];
+            let filesToDelete = [];
+            
+            if (deployMode === 'fullSync') {
+                updateProgress(5, 'Analyzing repository structure...', 'Fetching current files');
+                logProgress('📋 Fetching current repository files for comparison...', 'info');
+                repoFiles = await getRepoFiles(owner, repo, selectedBranch);
+                const zipFileSet = new Set(files);
+                filesToDelete = repoFiles.filter(f => !zipFileSet.has(f));
+                logProgress(`🔍 Found ${filesToDelete.length} files to delete (not in ZIP)`, 'warning');
+            }
+            
+            // Calculate total operations
+            const totalOps = totalFiles + filesToDelete.length;
+            let completedOps = 0;
+            
+            // First handle deletions if in full sync mode
+            if (deployMode === 'fullSync' && filesToDelete.length > 0) {
+                logProgress(`🗑️ Starting deletion of ${filesToDelete.length} files...`, 'warning');
+                for (const filePath of filesToDelete) {
+                    try {
+                        // Get SHA for deletion
+                        const getRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${selectedBranch}`, {
+                            headers: { 'Authorization': `token ${githubToken}` }
+                        });
+                        if (!getRes.ok) throw new Error('Failed to get file SHA');
+                        const fileData = await getRes.json();
+                        
+                        // Delete file
+                        const deleteRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, {
+                            method: 'DELETE',
+                            headers: { 
+                                'Authorization': `token ${githubToken}`, 
+                                'Content-Type': 'application/json' 
+                            },
+                            body: JSON.stringify({
+                                message: `deploy: remove ${filePath} (not in source ZIP)`,
+                                sha: fileData.sha,
+                                branch: selectedBranch
+                            })
+                        });
+                        
+                        if (!deleteRes.ok) throw new Error('Delete failed');
+                        deleted++;
+                        logProgress(`🗑️ Deleted: ${filePath}`, 'warning');
+                    } catch (err) {
+                        logProgress(`❌ Failed to delete ${filePath}: ${err.message}`, 'error');
+                    }
+                    completedOps++;
+                    const percent = Math.round((completedOps / totalOps) * 100);
+                    updateProgress(percent, `Deleting old files...`, `${completedOps}/${totalOps} ops`);
+                    await new Promise(r => setTimeout(r, 100)); // Rate limiting for deletes
+                }
+                logProgress(`✅ Completed deletions: ${deleted}/${filesToDelete.length}`, 'success');
+            }
+            
+            // Now handle uploads/updates
+            logProgress(`📤 Starting upload of ${files.length} files...`, 'info');
+            for(let i=0; i<files.length; i++) { 
+                const filePath = files[i]; 
+                try { 
+                    const file = zipContents.files[filePath]; 
+                    const content = await file.async('base64'); 
+                    let existingSha = null; 
+                    try { 
+                        const existing = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${selectedBranch}`, { headers: { 'Authorization': `token ${githubToken}` } }); 
+                        if(existing.ok) existingSha = (await existing.json()).sha; 
+                    } catch(e) {} 
+                    const body = { message: `deploy: ${filePath}`, content, branch: selectedBranch }; 
+                    if(existingSha) body.sha = existingSha; 
+                    const putRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, { method: 'PUT', headers: { 'Authorization': `token ${githubToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); 
+                    if(!putRes.ok) throw new Error(); 
+                    uploaded++; 
+                    logProgress(`${existingSha ? '📝 Updated' : '✅ Created'}: ${filePath}`, 'success'); 
+                } catch(err) { 
+                    failed++; 
+                    logProgress(`❌ Failed: ${filePath} - ${err.message}`, 'error'); 
+                } 
+                completedOps++;
+                const percent = Math.round((completedOps / totalOps) * 100); 
+                updateProgress(percent, `Uploading...`, `${uploaded}↑ ${deleted}🗑️ ${failed}✗`); 
+                await new Promise(r => setTimeout(r, 30)); 
+            } 
+            
+            updateProgress(100, 'Complete', `${uploaded} uploaded, ${deleted} deleted, ${failed} failed`); 
+            showToast(`Deployed: ${uploaded}↑ ${deleted}🗑️ ${failed}✗`, failed ? 'warning' : 'success'); 
+            document.getElementById('deployBtn').disabled = false; 
+        }
+        
+        document.getElementById('resetAppBtn').addEventListener('click', () => { githubToken = ''; currentUser = null; selectedRepo = null; zipContents = null; document.getElementById('step1').classList.remove('hidden'); document.getElementById('step2').classList.add('hidden'); document.getElementById('step3').classList.add('hidden'); document.getElementById('progressSection').classList.add('hidden'); document.getElementById('userBar').classList.add('hidden'); document.getElementById('tokenInput').value = ''; showToast('Disconnected', 'info'); });
+        document.getElementById('createRepoModal').addEventListener('click', (e) => { if(e.target === e.currentTarget) closeCreateRepoModal(); });
+        document.getElementById('createBranchModal').addEventListener('click', (e) => { if(e.target === e.currentTarget) closeCreateBranchModal(); });
+        window.toggleTokenVisibility = toggleTokenVisibility; window.fetchRepos = fetchRepos; window.refreshRepos = refreshRepos; window.filterRepos = filterRepos; window.switchTab = switchTab; window.selectRepo = selectRepo; window.onBranchChange = onBranchChange; window.openCreateRepoModal = openCreateRepoModal; window.closeCreateRepoModal = closeCreateRepoModal; window.createRepository = createRepository; window.openCreateBranchModal = openCreateBranchModal; window.closeCreateBranchModal = closeCreateBranchModal; window.createBranch = createBranch; window.handleDragOver = handleDragOver; window.handleDragLeave = handleDragLeave; window.handleDrop = handleDrop; window.handleFileSelect = handleFileSelect; window.clearFile = clearFile; window.deployFiles = deployFiles; window.updateDeployMode = updateDeployMode;
+        lucide.createIcons();
+    </script>
+</body>
+</html>
